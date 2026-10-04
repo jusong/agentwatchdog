@@ -30,7 +30,9 @@ if [ ! -x "$BIN" ]; then
   TMPDIR="$PWD/build/tmp" swiftc -swift-version 5 -module-cache-path "$PWD/build/ModuleCache" \
     -parse-as-library -O -o "$BIN" Watchdog.swift || { echo "  ✗ 编译失败"; exit 1; }
 fi
-[ -d demo ] || python3 scripts/mkdemo.py demo   # 全新 clone 上自给自足
+# 夹具的时间戳是相对生成时刻的，放一天就过期——"目录存在"不代表"数据是今天的"。
+# 所以每次都重新生成，别拿旧夹具算出 $0.00 来当通过。
+python3 scripts/mkdemo.py demo >/dev/null
 if "$BIN" --stats "$HOME/.claude/projects" 2>/dev/null; then ok "CLI 计量 (--stats 真实数据)"; else bad "CLI 计量"; fi
 if WATCHDOG_DATA_DIR="$PWD/demo" "$BIN" --selftest; then ok "计价公式 + demo 解析"; else bad "计价公式 + demo 解析"; fi
 
