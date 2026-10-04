@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentWatchdog — Circuit breaker for your AI coding agents</title>
+<meta name="description" content="Menubar app that watches your Claude Code agents and trips a circuit breaker when they go rogue. Budget limits, loop detection, error streaks. One-time $19.">
+<style>
+  :root { --bg:#0b0e14; --card:#12161f; --line:#232a38; --txt:#e6e9f0; --dim:#8b93a7; --acc:#4ade80; --red:#f87171; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,"SF Pro Text",system-ui,sans-serif; line-height:1.6; }
+  .wrap { max-width:960px; margin:0 auto; padding:0 24px; }
+  nav { display:flex; justify-content:space-between; align-items:center; padding:20px 0; }
+  nav b { font-size:17px; }
+  .btn { display:inline-block; background:var(--acc); color:#052e12; font-weight:700; padding:10px 22px; border-radius:9px; text-decoration:none; font-size:15px; }
+  .btn.ghost { background:transparent; color:var(--txt); border:1px solid var(--line); }
+  header { text-align:center; padding:72px 0 56px; }
+  header h1 { font-size:44px; line-height:1.15; letter-spacing:-.02em; }
+  header .sub { color:var(--dim); font-size:19px; margin:18px 0 30px; }
+  .tag { color:var(--dim); font-size:13px; margin-top:14px; }
+  section { padding:48px 0; border-top:1px solid var(--line); }
+  h2 { font-size:26px; margin-bottom:22px; letter-spacing:-.01em; }
+  .grid { display:grid; gap:16px; }
+  .g4 { grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
+  .g3 { grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  .card .big { font-size:26px; font-weight:800; color:var(--red); }
+  .card p { color:var(--dim); font-size:14px; margin-top:6px; }
+  .card a { color:var(--dim); font-size:12px; }
+  .card h3 { font-size:16px; margin-bottom:8px; }
+  ul { list-style:none; }
+  li { padding:6px 0 6px 26px; position:relative; color:var(--txt); font-size:15px; }
+  li::before { content:"✓"; position:absolute; left:0; color:var(--acc); font-weight:700; }
+  li small { display:block; color:var(--dim); }
+  .mock { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; max-width:360px; }
+  .mock .row { display:flex; justify-content:space-between; padding:3px 0; }
+  .mock .hl { color:var(--red); font-weight:700; }
+  .mock .dim { color:var(--dim); }
+  .price { text-align:center; }
+  .price .amt { font-size:56px; font-weight:800; }
+  .price .old { color:var(--dim); text-decoration:line-through; font-size:22px; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin-bottom:10px; }
+  summary { cursor:pointer; font-weight:600; }
+  details p { color:var(--dim); margin-top:8px; font-size:14px; }
+  footer { border-top:1px solid var(--line); padding:32px 0 48px; color:var(--dim); font-size:13px; text-align:center; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:32px; align-items:center; }
+  @media(max-width:720px){ .two{grid-template-columns:1fr;} header h1{font-size:32px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <b>🐕 AgentWatchdog</b>
+    <!-- TODO: 换成 Gumroad/LemonSqueezy 链接 -->
+    <a class="btn" href="#">Buy $19</a>
+  </nav>
+
+  <header>
+    <h1>Your AI agents run at 3am.<br>Who stops them when they go rogue?</h1>
+    <p class="sub">A menubar watchdog for Claude Code: live spend metering, budget breaker,<br>loop detection and error-streak kills. All local. No cloud. No subscription.</p>
+    <a class="btn" href="#">Download for macOS</a>
+    <p class="tag">One-time $19 launch price · macOS 13+ · works with your Claude Code subscription</p>
+  </header>
+
+  <section>
+    <h2>It happens every month</h2>
+    <div class="grid g4">
+      <div class="card"><div class="big">$16.6M</div><p>bill received by a dev running 8 agents on a Mac mini — dashboard showed $0</p><a href="https://en.kocpc.com.tw/archives/474">source →</a></div>
+      <div class="card"><div class="big">$6,000</div><p>overnight, one Claude Code session left running</p><a href="https://www.makeuseof.com/someone-left-claude-code-running-overnight-and-it-cost-6000/">source →</a></div>
+      <div class="card"><div class="big">$187</div><p>in 10 minutes — GPT-4o retrying a failed analysis in a loop</p><a href="https://news.ycombinator.com/item?id=47133305">source →</a></div>
+      <div class="card"><div class="big">16M</div><p>tokens burned for a 3-line fix (Cursor agent mode)</p><a href="https://forum.cursor.com/t/agent-mode-claude-thinking-burned-16-million-tokens-for-a-3-line-fix/169158">source →</a></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Watch, then <em>stop</em> — not just another meter</h2>
+    <div class="two">
+      <div>
+        <ul>
+          <li><b>Live spend metering</b><small>Reads your local Claude Code history — per-day, per-session, per-project $ estimates, refreshed every 15s.</small></li>
+          <li><b>Budget breaker</b><small>Set a daily $ limit. Exceed it and the breaker trips: notifications, kill marker, and every further tool call is denied via hooks.</small></li>
+          <li><b>Loop detection</b><small>Same tool + same arguments 8× within 10 minutes = a stuck agent. Tripped and blocked.</small></li>
+          <li><b>Error-streak kill</b><small>5 consecutive tool failures in a session means something is deeply wrong. Halt.</small></li>
+          <li><b>Patrol panel</b><small>See which agent processes, tmux sessions and cron jobs are alive right now.</small></li>
+          <li><b>Local-first, always</b><small>Reads JSONL files on your disk. Zero telemetry, zero cloud, zero accounts.</small></li>
+        </ul>
+      </div>
+      <div class="mock">
+        <div class="row"><span>🐕 AgentWatchdog</span><span class="hl">🔴 $212.40</span></div>
+        <hr style="border-color:var(--line);margin:8px 0">
+        <div class="row"><span class="dim">today</span><span class="hl">$212.40 / $20.00</span></div>
+        <div class="row"><span class="dim">7d</span><span>$318.02</span></div>
+        <div class="row"><span class="dim">hook</span><span style="color:var(--acc)">ACTIVE ✓</span></div>
+        <hr style="border-color:var(--line);margin:8px 0">
+        <div class="row"><span class="dim">reason</span><span class="hl">loop: Bash ×8 in 10min</span></div>
+        <div class="row"><span class="dim">patrol</span><span>claude ×2 · tmux ×1 · cron ×1</span></div>
+        <hr style="border-color:var(--line);margin:8px 0">
+        <div class="row"><span class="dim">[ Reset &amp; rearm ]</span><span class="dim">⚡ sim rogue</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why not ccusage / CodexBar?</h2>
+    <div class="grid g3">
+      <div class="card"><h3>They watch. This one stops.</h3><p>ccusage (18.8k★) and a dozen menubar meters show you the burn — after the fact. AgentWatchdog is the enforcement layer: hooks deny tool calls the moment rules trip.</p></div>
+      <div class="card"><h3>Subscription sessions included</h3><p>In-process SDKs can't see your Claude Code subscription usage. We read the source of truth — local session logs — and act through official hooks.</p></div>
+      <div class="card"><h3>One-time $19</h3><p>You already pay per token. Peace of mind shouldn't be another monthly subscription.</p></div>
+    </div>
+  </section>
+
+  <section class="price">
+    <h2>Pricing</h2>
+    <p><span class="old">$29</span> <span class="amt">$19</span></p>
+    <p style="color:var(--dim);margin:8px 0 24px">one-time · all v1.x updates included · 14-day refund, no questions</p>
+    <a class="btn" href="#">Get AgentWatchdog</a>
+  </section>
+
+  <section>
+    <h2>FAQ</h2>
+    <details><summary>Are the $ numbers my actual bill?</summary><p>They're close estimates — tokens × current model pricing (cache read/write included). Subscription quota is metered by Anthropic, not dollars; we translate both into a $-denominated budget so your breaker works the same way across plans.</p></details>
+    <details><summary>Cursor / other agents?</summary><p>v1 guards Claude Code (local sessions, hooks, cron). Cursor background agents run in the cloud, so v1.x ships billing-anomaly notifications for them; full interception is on the roadmap.</p></details>
+    <details><summary>Does it send my data anywhere?</summary><p>No. No cloud, no accounts, no telemetry. Parsing happens on your machine; the only network call is the macOS notification.</p></details>
+    <details><summary>What happens when the breaker trips?</summary><p>You get a notification, the menubar turns red, a stop marker is written, and registered hooks deny every further tool call until you hit "Reset &amp; rearm". Fail-open by design — if the watchdog itself fails, your agents keep running.</p></details>
+    <details><summary>Can it block legitimate work, or miss a real runaway?</summary><p>Both, in principle — and we say so plainly. Loop detection uses exact-argument matching, so heavy-but-legitimate repetition can trip it (one click re-arms; every trip shows its reason). And estimates can drift from your actual bill. AgentWatchdog is a safety net, not a guarantee: it reduces the blast radius of rogue agents, it does not promise zero incidents. If it ever blocks work you needed or misses a burn you expected it to catch, that's what the 14-day refund is for.</p></details>
+  </section>
+
+  <footer>
+    Built by one indie dev who got tired of checking usage pages. 🐕<br>
+    <a style="color:var(--dim)" href="mailto:you@example.com">Contact</a> · <!-- TODO: 换成你的链接 --> <a style="color:var(--dim)" href="#">Changelog</a> · © 2026 AgentWatchdog
+  </footer>
+</div>
+</body>
+</html>
