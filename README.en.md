@@ -29,14 +29,16 @@ Everything is local: it reads `~/.claude/projects/*.jsonl` and official hooks. N
 ```bash
 git clone https://github.com/jusong/agentwatchdog.git && cd agentwatchdog
 ./build.sh        # compile + selftest + bundle + launch
-./selfcheck.sh    # 6 checks: metering, budget deny/allow, loop, error streak
+./selfcheck.sh    # 14 checks: pricing, all three breakers, corruption recovery, escape hatch
 ```
+
+`selfcheck.sh` exits non-zero on failure, so it can go straight into CI. No GUI required; it generates the `demo/` fixture itself via `scripts/mkdemo.py`.
 
 Or download the prebuilt app (TODO: Gumroad link, $19 one-time — or just build from source).
 
 ## Register the guard (real enforcement)
 
-Add to `~/.claude/settings.json`:
+**This repo does not modify `~/.claude/settings.json` — you register the hook yourself.** Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -49,12 +51,16 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-Tune thresholds via `~/.watchdog/config.json` (`loop_n`, `loop_window_s`, `err_streak`).
+Tune thresholds via `~/.watchdog/config.json` (`loop_n`, `loop_window_s`, `err_streak`, `demo_ttl_s`).
+
+Without the GUI: `python3 watchdog-guard.py --status` to inspect, `--reset` to rearm.
 
 ## How it works
 
-- `Watchdog.swift` (~330 lines, SwiftUI MenuBarExtra): scans session JSONL, dedupes by message id (ccusage-style), prices with a hardcoded table (edit `priceTable` when Anthropic changes prices), writes `~/.watchdog/state.json` every 15s.
-- `watchdog-guard.py`: Pre/PostToolUse hook. Reads state, appends to `events.jsonl`/`errors.jsonl` (sliding window), enforces the three rules, emits `permissionDecision: deny` on trip. Fail-open on any error.
+- `Watchdog.swift` (~330 lines, SwiftUI MenuBarExtra): scans session JSONL, dedupes by message id (ccusage-style), prices with a hardcoded table (edit `priceTable` when Anthropic changes prices), writes `~/.watchdog/state.json` atomically every 15s. Only real spend goes into that file.
+- `watchdog-guard.py`: Pre/PostToolUse hook. Reads state, appends to `events.jsonl`/`results.jsonl` (time-windowed, not line-capped), enforces the three rules, emits `permissionDecision: "deny"` on trip. Fails open on any error; on a corrupt `state.json` it falls back to `state.json.bak` rather than silently dropping to no budget.
+- Loop fingerprinting ignores cosmetic `Bash` fields (`description`, `timeout`), so a reworded retry of the same command still counts as a loop.
+- The error-streak rule is genuinely consecutive — a successful tool call clears it.
 - No daemon, no IPC beyond two JSON files.
 
 ## Limitations (on purpose)
@@ -62,6 +68,8 @@ Tune thresholds via `~/.watchdog/config.json` (`loop_n`, `loop_window_s`, `err_s
 - Claude Code only (v1) — Cursor agents run cloud-side, no local hooks; notifications on the roadmap
 - Estimates ≠ invoices; subscription quotas are translated into your $ budget
 - Loop detection matches exact arguments (semantically-equal-but-different calls won't dedupe)
+- Tripping is global: one trip denies tool calls in every session until you reset
+- Budget enforcement needs the menubar app running — the guard itself does no cost math
 - A safety net, not a guarantee: it shrinks the blast radius of rogue agents; it does not promise zero incidents
 
 ## License

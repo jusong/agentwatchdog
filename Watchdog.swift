@@ -57,16 +57,18 @@ func scan(_ root: URL) -> (recs: [Rec], parseErrors: Int) {
 final class Model: ObservableObject {
     @Published var todayBurn = 0.0
     @Published var weekBurn = 0.0
-    @Published var overlay = 0.0        // "simulate rogue" 的模拟增量（不写进真实数据）
+    @Published var overlay = 0.0        // "simulate rogue" 的模拟增量（只进 UI，不参与熔断判定）
     @Published var tripped = false
     @Published var tripReason = ""
+    @Published var tripDemo = false     // 本次熔断是自测触发，guard 会在 demo_ttl_s 后自动复位
     @Published var hookActive = false
     @Published var sessionsToday: [(project: String, session: String, cost: Double)] = []
     @Published var procs: [String] = []
     @Published var demoMode = false
     var budget: Double { didSet { UserDefaults.standard.set(budget, forKey: "wd_budget"); writeState() } }
     var hardStop: Bool { didSet { UserDefaults.standard.set(hardStop, forKey: "wd_hard"); writeState() } }
-    var burn: Double { todayBurn + overlay }
+    var realBurn: Double { todayBurn }              // 真实花费：唯一允许写进 state.json 的值
+    var displayBurn: Double { todayBurn + overlay }  // 演示增量只影响显示，不参与熔断判定
 
     let dataRoot: URL
     private let home = FileManager.default.homeDirectoryForCurrentUser
@@ -103,16 +105,16 @@ final class Model: ObservableObject {
     }
 
     func evaluate() {
-        if burn >= budget && !tripped { trip() }
+        if realBurn >= budget && !tripped { trip() }
     }
 
-    func trip(_ reason: String = "budget") {
-        tripped = true; tripReason = reason
+    func trip(_ reason: String = "budget", demo: Bool = false) {
+        tripped = true; tripReason = reason; tripDemo = demo
         let detail = reason == "budget"
-            ? String(format: "$%.2f ≥ budget $%.2f — agent spend halted", burn, budget)
+            ? String(format: "$%.2f ≥ budget $%.2f — agent spend halted", realBurn, budget)
             : reason
         if !alertedOnce { notify("Circuit breaker TRIPPED", detail); alertedOnce = true }
-        if hardStop { writeStopMarker() }
+        if hardStop && !demo { writeStopMarker() }   // 自测不写停止标记：没有真实 agent 需要停
         writeState()
     }
 
@@ -124,8 +126,10 @@ final class Model: ObservableObject {
               (obj["tripped"] as? Bool) == true, !tripped else { return }
         tripped = true
         tripReason = obj["reason"] as? String ?? "external"
+        let demo = (obj["trip_demo"] as? Bool) == true
+        tripDemo = demo
         if !alertedOnce { notify("Circuit breaker TRIPPED", tripReason); alertedOnce = true }
-        if hardStop { writeStopMarker() }
+        if hardStop && !demo { writeStopMarker() }
     }
 
     private func writeStopMarker() {
@@ -140,22 +144,29 @@ final class Model: ObservableObject {
     }
 
     func resetTrip() {
-        tripped = false; tripReason = ""; overlay = 0; alertedOnce = false
+        tripped = false; tripReason = ""; tripDemo = false; overlay = 0; alertedOnce = false
         try? FileManager.default.removeItem(at: home.appendingPathComponent(".claude/AGENT_STOP"))
         try? FileManager.default.removeItem(at: home.appendingPathComponent(".watchdog/events.jsonl")) // 清循环计数
-        try? FileManager.default.removeItem(at: home.appendingPathComponent(".watchdog/errors.jsonl"))
+        try? FileManager.default.removeItem(at: home.appendingPathComponent(".watchdog/results.jsonl")) // 清连续报错计数
+        try? FileManager.default.removeItem(at: home.appendingPathComponent(".watchdog/errors.jsonl"))  // v1.1 旧文件名，顺手清掉
         notify("Breaker rearmed", "Watchdog reset — agents may proceed")
         writeState()
     }
 
-    func simulateRogue() { overlay += 47; evaluate() } // 演示：一键注入一次 rogue 烧钱
+    /// 演示：不注入假花费。过去 overlay 会把 $47 写进真实 state.json，
+    /// 结果是点一下自测就真把正在跑的 agent 全拒掉。这里直接走熔断路径，
+    /// 让用户能验证 hook 是否真的会拦；guard 会在 demo_ttl_s 后自动复位。
+    func simulateRogue() {
+        trip("DEMO: circuit-breaker self-test — no real spend, auto-rearms shortly", demo: true)
+    }
 
     private func writeState() { // hook 的 IPC：极简 JSON 文件，无守护进程
         let dir = home.appendingPathComponent(".watchdog")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let reason = tripReason.replacingOccurrences(of: "\"", with: "")
-        let s = String(format: "{\"today_burn\": %.4f, \"budget\": %.2f, \"tripped\": %@, \"reason\": \"%@\"}\n",
-                       burn, budget, tripped ? "true" : "false", reason)
+        // today_burn 只写真实花费：guard 拿这个数做预算判定，混入演示值就等于伪造账单
+        let s = String(format: "{\"today_burn\": %.4f, \"budget\": %.2f, \"tripped\": %@, \"trip_demo\": %@, \"reason\": \"%@\"}\n",
+                       realBurn, budget, tripped ? "true" : "false", tripDemo ? "true" : "false", reason)
         try? s.write(to: dir.appendingPathComponent("state.json"), atomically: true, encoding: .utf8)
     }
 
@@ -183,7 +194,7 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(String(format: "$%.2f", m.burn)).font(.system(size: 26, weight: .bold, design: .rounded)).foregroundColor(m.tripped ? .red : .primary)
+                Text(String(format: "$%.2f", m.displayBurn)).font(.system(size: 26, weight: .bold, design: .rounded)).foregroundColor(m.tripped ? .red : .primary)
                 Text("today").foregroundStyle(.secondary)
                 Spacer()
                 if m.tripped { Text("🔴 TRIPPED").font(.callout.bold()).foregroundStyle(.red) }
@@ -206,6 +217,9 @@ struct PanelView: View {
             }
             if m.tripped {
                 Text("reason: \(m.tripReason)").font(.caption).foregroundStyle(.red).lineLimit(2)
+                if m.tripDemo {
+                    Text("self-test — no real spend, will re-arm automatically").font(.caption2).foregroundStyle(.orange)
+                }
                 Button("Reset & rearm breaker") { m.resetTrip() }.controlSize(.small)
             }
             Divider()
@@ -276,8 +290,8 @@ enum CLI {
             PanelView().environmentObject(model)
         } label: {
             Text(model.tripped
-                 ? String(format: "🔴 $%.2f", model.burn)
-                 : String(format: "🐕 $%.2f", model.burn))
+                 ? String(format: "🔴 $%.2f", model.displayBurn)
+                 : String(format: "🐕 $%.2f", model.displayBurn))
         }
         .menuBarExtraStyle(.window)
     }
